@@ -1,4 +1,5 @@
 import importlib.util
+import ntpath
 import os
 import plistlib
 import sys
@@ -13,6 +14,11 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("installers_build", os.path.join(_ROOT, "installers", "build.py"))
 build = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(build)
+
+
+def _add_data_source(item, sep):
+    # Split on the last separator: a Windows source path has a drive-letter colon.
+    return item.rsplit(sep, 1)[0]
 
 
 class VersionTest(unittest.TestCase):
@@ -76,7 +82,7 @@ class ArtifactTest(unittest.TestCase):
     def test_pyinstaller_bundles_web_files_and_browser_client(self):
         args = build.pyinstaller_args("/tmp/VERSION", sep=":")
         data = [args[i + 1] for i, arg in enumerate(args) if arg == "--add-data"]
-        bundled = {os.path.basename(item.split(":")[0]) for item in data}
+        bundled = {os.path.basename(_add_data_source(item, ":")) for item in data}
         self.assertTrue({"VERSION", "jarvis_web.html", "jarvis_visual.html"} <= bundled)
         for item in data:
             self.assertTrue(item.endswith(":."))
@@ -84,6 +90,12 @@ class ArtifactTest(unittest.TestCase):
         self.assertIn("--console", args)
         self.assertNotIn("--codesign-identity", args)
         self.assertIn("--codesign-identity", build.pyinstaller_args("/tmp/VERSION", identity="Developer ID"))
+
+    def test_add_data_source_keeps_windows_drive(self):
+        source = _add_data_source("D:\\x\\jarvis_web.html:.", ":")
+        self.assertEqual(source, "D:\\x\\jarvis_web.html")
+        self.assertEqual(ntpath.basename(source), "jarvis_web.html")
+        self.assertEqual(_add_data_source("/tmp/VERSION:.", ":"), "/tmp/VERSION")
 
     def test_data_files_exist(self):
         for name in build.DATA_FILES:
